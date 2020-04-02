@@ -1,0 +1,14 @@
+# .vscodeフォルダを指定
+/.vscode/
+
+# node_modulesフォルダを指定
+/node_modules/
+
+# jsonファイルを指定
+*.json
+
+# APITokenなど公開しないファイルディレクトリを指定
+/00_Private/
+
+# .jsファイルを指定
+*.js
