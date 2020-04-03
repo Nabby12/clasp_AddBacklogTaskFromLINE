@@ -14,12 +14,15 @@ const TASKID_OTHER: string = PropertiesService.getScriptProperties().getProperty
 const LINE_REPLYWORD0: string = PropertiesService.getScriptProperties().getProperty('LINE_REPLYWORD0');
 const LINE_KEYWORD1: string = PropertiesService.getScriptProperties().getProperty('LINE_KEYWORD1');
 const LINE_REPLYWORD1: string = PropertiesService.getScriptProperties().getProperty('LINE_REPLYWORD1');
+const LINE_KEYWORD2: string = PropertiesService.getScriptProperties().getProperty('LINE_KEYWORD2');
+const LINE_REPLYWORD2: string = PropertiesService.getScriptProperties().getProperty('LINE_REPLYWORD2');
 const ADD_MESSAGE_START: string = PropertiesService.getScriptProperties().getProperty('ADD_MESSAGE_START');
 const ADD_MESSAGE_END: string = PropertiesService.getScriptProperties().getProperty('ADD_MESSAGE_END');
 const BACKLOG_API_TOKEN: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_API_TOKEN');
 const BACKLOG_SPACE_KEY: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_SPACE_KEY');
 const BACKLOG_PROJECT_ID: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_PROJECT_ID');
 const ERROR_MESSAGE_FOR_PLAN: string = PropertiesService.getScriptProperties().getProperty('ERROR_MESSAGE_FOR_PLAN');
+const BR_STR: string = PropertiesService.getScriptProperties().getProperty('BR_STR');
 
 function doPost(e: string) {
     let event = JSON.parse(e.postData.contents).events[0];
@@ -66,23 +69,36 @@ function doPost(e: string) {
     if (trgtKey === '') {
         let otherWordsAry: string[] = [
             LINE_KEYWORD1,
+            LINE_KEYWORD2,
         ];
+        let replyAry: string[] = [
+            LINE_REPLYWORD1,
+            LINE_REPLYWORD2,
+        ];
+
         let trgtIndex: number = -1;
         otherWordsAry.some((value, index) => {
-            if(userMessage.startsWith(value)) {
+            if(userMessage.indexOf(value) != -1) {
                 trgtIndex = index;
                 return true;
             }
         });
 
         if (trgtIndex === -1) {
+            // 指定のワード全てに合致しない場合の返信
             sendMessageToLINE(replyToken, LINE_REPLYWORD0);
             return;
         }
 
-        ReplyMessageBySubKeywords(replyToken, trgtIndex)
+        let replyWord: string = replyAry[trgtIndex];
+
+        ReplyMessageBySubKeywords(replyToken, replyWord)
     }
 
+    AddTaskToBacklog(replyToken, userMessage, trgtKey, trgtId)
+}
+
+function AddTaskToBacklog(replyToken: string, userMessage: string, trgtKey: string, trgtId: string) {
     let taskTitle: string = userMessage.replace(trgtKey, '').trim();
 
     // plan の時は yyyymmdd 形式かどうか判定 + hhmm 形式で時間が入っていれば不正値かどうか判定（「時間」は省略可）
@@ -138,34 +154,14 @@ function doPost(e: string) {
     }
 
     // add-backlog-task
-    addTaskToBacklog(trgtId, taskTitle, trgtDateStr);
+    AddBacklogTask(trgtId, taskTitle, trgtDateStr);
 
     let replyMessage: string = ADD_MESSAGE_START + trgtKey + '：' + taskTitle + ADD_MESSAGE_END;
     
     // reply-message
     sendMessageToLINE(replyToken, replyMessage);
 }
-
-function ReplyMessageBySubKeywords(replyToken: string, trgtIndex: number) {
-    let replyAry: string[] = [
-        LINE_REPLYWORD1,
-    ];
-
-    let replyMessageAry: string[] = replyAry[trgtIndex].split('brbr')
-    let replyMessage: string = '';
-    for (let i = 0; i < replyMessageAry.length; i++){
-        if (i === 0) {
-            replyMessage = replyMessageAry[i];
-        } else {
-            replyMessage = replyMessage + '\n' + replyMessageAry[i];
-        }
-
-    }
-
-    sendMessageToLINE(replyToken, replyMessage
-}
-
-function addTaskToBacklog(trgtId: string, taskTitle: string, trgtDateStr: string)  {
+function AddBacklogTask(trgtId: string, taskTitle: string, trgtDateStr: string)  {
     let BACKLOG_HTTPREQUEST_ADD_ISSUE: string = 'https://' + BACKLOG_SPACE_KEY + '.backlog.com/api/v2/issues?apiKey=' + BACKLOG_API_TOKEN;
     let param = {
         "method": "post"
@@ -191,20 +187,41 @@ function createQuery(param) {
     return query.join('&');
 }
 
-function sendMessageToLINE(token, sendBody) {
+
+function ReplyMessageBySubKeywords(replyToken: string, replyWord: String) {
+    let replyMessageAry: string[] = replyWord.split(BR_STR)
+    sendMessageToLINE(replyToken, replyMessageAry)
+}
+
+
+function sendMessageToLINE(token: string, sendBody) {
+    let messageBody: any[];
+    if (Object.prototype.toString.call(sendBody) === '[object Array]') {
+        for (let i = 0; i < sendBody.length; i++) {
+            if (i < 1) {
+                messageBody = [
+                    {type: 'text', text: sendBody[i]}
+                ];
+            } else {
+                messageBody.push({type: 'text', text: sendBody[i]});
+            }
+        }
+    } else {
+        messageBody = [
+            {type: 'text', text: sendBody},
+        ];
+    }
+
     const LINE_HTTPREQUEST_REPLY: string = 'https://api.line.me/v2/bot/message/reply';
     UrlFetchApp.fetch(LINE_HTTPREQUEST_REPLY, {
-    'headers': {
-        'Content-Type': 'application/json; charset=UTF-8',
-        'Authorization': 'Bearer ' + LINE_CHANNEL_ACCESSTOKEN,
-    },
-    'method': 'post',
-    'payload': JSON.stringify({
-        'replyToken': token,
-        'messages': [{
-        'type': 'text',
-        'text': sendBody,
-        }],
-    }),
+        'headers': {
+            'Content-Type': 'application/json; charset=UTF-8',
+            'Authorization': 'Bearer ' + LINE_CHANNEL_ACCESSTOKEN,
+        },
+        'method': 'post',
+        'payload': JSON.stringify({
+            'replyToken': token,
+            'messages': messageBody,
+        }),
     });
 }
