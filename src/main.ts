@@ -11,6 +11,14 @@ const TASKID_ANXIOUS: string = PropertiesService.getScriptProperties().getProper
 const TASKID_REQUEST: string = PropertiesService.getScriptProperties().getProperty('TASKID_REQUEST');
 const TASKID_WORRY: string = PropertiesService.getScriptProperties().getProperty('TASKID_WORRY');
 const TASKID_OTHER: string = PropertiesService.getScriptProperties().getProperty('TASKID_OTHER');
+const LINE_GET_SCHEDULE_KEYWORD: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_KEYWORD');
+const LINE_GET_SCHEDULE_DATEWORD1: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_DATEWORD1');
+const LINE_GET_SCHEDULE_DATEWORD2: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_DATEWORD2');
+const LINE_GET_SCHEDULE_DATEWORD3: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_DATEWORD3');
+const LINE_GET_SCHEDULE_REPLYWORDSTART: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_REPLYWORDSTART');
+const LINE_GET_SCHEDULE_REPLYWORDEND: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_REPLYWORDEND');
+const LINE_GET_NOSCHEDULE_REPLYWORD: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_NOSCHEDULE_REPLYWORD');
+const LINE_GET_SCHEDULE_ERRORREPLYWORD: string = PropertiesService.getScriptProperties().getProperty('LINE_GET_SCHEDULE_ERRORREPLYWORD');
 const LINE_REPLYWORD0: string = PropertiesService.getScriptProperties().getProperty('LINE_REPLYWORD0');
 const LINE_KEYWORD1: string = PropertiesService.getScriptProperties().getProperty('LINE_KEYWORD1');
 const LINE_REPLYWORD1: string = PropertiesService.getScriptProperties().getProperty('LINE_REPLYWORD1');
@@ -21,6 +29,7 @@ const ADD_MESSAGE_END: string = PropertiesService.getScriptProperties().getPrope
 const BACKLOG_API_TOKEN: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_API_TOKEN');
 const BACKLOG_SPACE_KEY: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_SPACE_KEY');
 const BACKLOG_PROJECT_ID: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_PROJECT_ID');
+const BACKLOG_ASSIGNEE_ID: string = PropertiesService.getScriptProperties().getProperty('BACKLOG_ASSIGNEE_ID');
 const ERROR_MESSAGE_FOR_PLAN: string = PropertiesService.getScriptProperties().getProperty('ERROR_MESSAGE_FOR_PLAN');
 const BR_STR: string = PropertiesService.getScriptProperties().getProperty('BR_STR');
 
@@ -37,7 +46,10 @@ function doPost(e: string) {
     }
 
     let userMessage: string = event.message.text.trim().replace(/　/g, ' ');
-    let userId: string = event.source.userId; // 担当者登録などで使うときがあったら
+    // let userId: string = event.source.userId; // 担当者登録などで使うときがあったら
+    // let groupId = event.source.groupId; // グループID取得で使うときがあったら
+    // let roomId = event.source.roomId; // ルームID取得で使うときがあったら
+    // sendMessageToLINE(replyToken, `userId:${ userId } \n groupId:${ groupId }$ \n roomId:${ roomId }`);
 
     let taskKeyAry: string[] = [
         TASKKEY_PLAN,
@@ -65,8 +77,14 @@ function doPost(e: string) {
             return true;
         }
     });
-
+    
+    // 課題登録以外の追加機能
     if (trgtKey === '') {
+        // 予定の確認
+        if (userMessage.indexOf(LINE_GET_SCHEDULE_KEYWORD) != -1) {
+            SendScheduleReplyToLINE(replyToken, userMessage)
+        }
+
         let otherWordsAry: string[] = [
             LINE_KEYWORD1,
             LINE_KEYWORD2,
@@ -173,6 +191,7 @@ function AddBacklogTask(trgtId: string, taskTitle: string, trgtDateStr: string) 
         "summary": taskTitle,
         "priorityId": 3,
         "dueDate": trgtDateStr,
+        "assigneeId": BACKLOG_ASSIGNEE_ID,
     };
 
     let request = UrlFetchApp.fetch(BACKLOG_HTTPREQUEST_ADD_ISSUE　+ '&' + createQuery(issue), param);
@@ -185,6 +204,98 @@ function createQuery(param) {
       query.push(key + '=' + encodeURI(param[key]))
     };
     return query.join('&');
+}
+
+
+function SendScheduleReplyToLINE(replyToken: string, userMessage: string) {
+    let scheduleWordPosition: number = userMessage.indexOf(LINE_GET_SCHEDULE_KEYWORD);
+    let dateStr: any = userMessage.substring(0, scheduleWordPosition);
+
+    let dateErrFlg: boolean = false;
+    let trgtDate: Date = new Date();
+    switch (dateStr) {
+        case LINE_GET_SCHEDULE_DATEWORD1:
+            break;
+        case LINE_GET_SCHEDULE_DATEWORD2:
+            trgtDate.setDate(trgtDate.getDate() + 1);
+            break;
+        default:
+            if(dateStr.indexOf(LINE_GET_SCHEDULE_DATEWORD3) != -1){
+                let buf: any = dateStr.substring(0, dateStr.length - LINE_GET_SCHEDULE_DATEWORD3.length);
+                if (isNaN(buf)) {
+                    dateErrFlg = true;
+                    break;
+                };
+
+                trgtDate.setDate(trgtDate.getDate() + parseInt(buf));
+                break;
+            }
+            
+            if (dateStr.length != 8 || isNaN(dateStr)) {
+                dateErrFlg = true;
+                break;
+            } else if (dateStr.substring(4, 6) > 12 || dateStr.substring(6, 8) > 31) {
+                dateErrFlg = true;
+                break;
+            }
+
+            dateStr = dateStr.substring(0, 4) + '/' + dateStr.substring(4, 6) + '/' + dateStr.substring(6, 8);
+            let dateAry: number[] = dateStr.split('/');
+
+            trgtDate = new Date(dateAry[0], dateAry[1] - 1, dateAry[2]);
+            break;
+    }
+
+    if (dateErrFlg === true) {
+        sendMessageToLINE(replyToken, LINE_GET_SCHEDULE_ERRORREPLYWORD);
+    }
+
+    let trgtMonth: number = trgtDate.getMonth() + 1;
+    let trgtMonthStr: string = "0" + trgtMonth;
+    let trgtDayStr: string = "0" + trgtDate.getDate()
+    let dueDate: string = trgtDate.getFullYear() + "-" + trgtMonthStr.slice(-2) + "-" + trgtDayStr.slice(-2);
+
+    let trgtUrl: string = "https://" + BACKLOG_SPACE_KEY + ".backlog.com/api/v2/issues?apiKey=" + BACKLOG_API_TOKEN;
+    let trgtStatus = {
+        "projectId[]": BACKLOG_PROJECT_ID,
+        "statusId[]": 1,
+        "sort": "dueDate",
+        "order": '',
+        "count": 100,
+        "dueDateSince": dueDate,
+        "dueDateUntil": dueDate,
+    };
+
+    let responseIssue = UrlFetchApp.fetch(trgtUrl + '&' + createQuery(trgtStatus));
+    if (responseIssue.getResponseCode() != 200) {
+        return;
+    }
+
+    let issueList = JSON.parse(responseIssue.getContentText());
+
+    if (issueList.length < 1) {
+        let replyBody: string = dateStr + LINE_GET_NOSCHEDULE_REPLYWORD;
+        sendMessageToLINE(replyToken, replyBody)
+    }
+
+    let replyMessage: string;
+    for (let i = 0; i < issueList.length; i++) {
+        let trgtIssueStr: string = issueList[i]["issueType"]["name"] + ":" + issueList[i]["summary"];
+        
+        if (i === 0) {
+            replyMessage = trgtIssueStr;
+        } else {
+            replyMessage += '\n' + trgtIssueStr;
+        }
+    }
+
+    let replyMessageAry: string[] = [
+        dateStr + LINE_GET_SCHEDULE_REPLYWORDSTART,
+        replyMessage,
+        LINE_GET_SCHEDULE_REPLYWORDEND,
+    ];
+
+    sendMessageToLINE(replyToken, replyMessageAry);
 }
 
 
