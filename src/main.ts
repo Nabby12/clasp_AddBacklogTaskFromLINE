@@ -262,7 +262,7 @@ function SendScheduleReplyToLINE(replyToken: string, userMessage: string) {
         "sort": "dueDate",
         "order": '',
         "count": 100,
-        "dueDateSince": dueDate,
+        // "dueDateSince": dueDate,
         "dueDateUntil": dueDate,
     };
 
@@ -280,7 +280,11 @@ function SendScheduleReplyToLINE(replyToken: string, userMessage: string) {
 
     let replyMessage: string;
     for (let i = 0; i < issueList.length; i++) {
-        let trgtIssueStr: string = issueList[i]["issueType"]["name"] + ":" + issueList[i]["summary"];
+        let dueDateStr: string = issueList[i]["dueDate"]
+        let dueDateStrAry: string[] = dueDateStr.substring(0,10).split('-')
+        
+        let trgtIssueStr: string = issueList[i]["issueType"]["name"] + '：' + issueList[i]["summary"]
+                                    + '（期限：' + dueDateStrAry[0] + '/' + dueDateStrAry[1] + '/' + dueDateStrAry[2]+ '）';
         
         if (i === 0) {
             replyMessage = trgtIssueStr;
